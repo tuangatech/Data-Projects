@@ -1,0 +1,2 @@
+requests==2.31.0
+# boto3   # for testing locally with AWS SDK. AWS Lambda's Python runtime environments come with boto3 pre-installed
