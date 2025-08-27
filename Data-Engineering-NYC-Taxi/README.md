@@ -332,13 +332,13 @@ EventBridge invokes the data processing lambda
 Databricks token:
 - Not exposed in Terraform state or code (creates secret with placeholder)
 - Get Databricks token from Databricks settings
-- Update Databricks token in `Secrets Manager` with actual one using AWS CLI. Databricks token = "dapi13745758276b00bc66380da479211421" 
+- Update Databricks token in `Secrets Manager` with actual one using AWS CLI. 
 - Lambda retrieves real token at runtime
 
 ```
 aws secretsmanager update-secret \
   --secret-id "nyctaxi/databricks-token" \
-  --secret-string '{"token":"dapi13745758276b00bc66380da479211421"}'
+  --secret-string '{"token":"dapi9999"}'
 ```
 
 **What This Terraform Setup Provides:**
