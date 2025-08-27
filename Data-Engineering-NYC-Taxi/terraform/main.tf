@@ -33,7 +33,7 @@ resource "aws_lambda_function" "nyctaxi_ingestion" {
 
   environment {
     variables = {
-      S3_BUCKET = "databricks-workspace-stack-06ea8-bucket"
+      S3_BUCKET = var.s3_bucket_name
       S3_PREFIX = "nyctaxi/raw/"
     }
   }
@@ -83,8 +83,8 @@ resource "aws_iam_role_policy" "lambda_s3_policy" {
           "s3:ListBucket"
         ]
         Resource = [
-          "arn:aws:s3:::databricks-workspace-stack-06ea8-bucket",
-          "arn:aws:s3:::databricks-workspace-stack-06ea8-bucket/*"
+          "arn:aws:s3:::${var.s3_bucket_name}",
+          "arn:aws:s3:::${var.s3_bucket_name}/*"
         ]
       },
       {
@@ -282,7 +282,7 @@ resource "aws_iam_role_policy" "processing_lambda_policy" {
           "s3:GetObject"
         ]
         Resource = [
-          "arn:aws:s3:::databricks-workspace-stack-06ea8-bucket/*"
+          "arn:aws:s3:::${var.s3_bucket_name}/*"
         ]
       },
       {
@@ -296,13 +296,14 @@ resource "aws_iam_role_policy" "processing_lambda_policy" {
   })
 }
 
-# Enable S3 EventBridge notifications
+# Enable S3 EventBridge notifications for the bucket
 resource "aws_s3_bucket_notification" "taxi_data_notification" {
-  bucket      = "databricks-workspace-stack-06ea8-bucket"
+  bucket      = var.s3_bucket_name
   eventbridge = true
 }
 
-# EventBridge rule for S3 object creation
+# EventBridge rule for S3 object creation in the raw/ folder
+# This rule triggers when a new object is created in the specified S3 bucket and prefix
 resource "aws_cloudwatch_event_rule" "s3_taxi_data_rule" {
   name        = "nyctaxi-s3-processing-trigger"
   description = "Triggers processing when new NYC taxi data arrives in S3"
@@ -312,7 +313,7 @@ resource "aws_cloudwatch_event_rule" "s3_taxi_data_rule" {
     detail-type = ["Object Created"]
     detail = {
       bucket = {
-        name = ["databricks-workspace-stack-06ea8-bucket"]
+        name = [var.s3_bucket_name]
       }
       object = {
         key = [
@@ -401,6 +402,12 @@ variable "databricks_job_id" {
   description = "Databricks job ID for processing"
   type        = string
   default     = "123456789"  # Actual job ID in terraform.tfvars
+}
+
+variable "s3_bucket_name" {
+  description = "S3 bucket name for NYC taxi data"
+  type        = string
+  default     = "databricks-workspace-stack-99999-bucket" # Actual bucket name in terraform.tfvars
 }
 
 # Outputs
