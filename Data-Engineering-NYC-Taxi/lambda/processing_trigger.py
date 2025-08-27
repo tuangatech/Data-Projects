@@ -124,7 +124,7 @@ def trigger_databricks_job(bucket, key, year, month):
     # Get Databricks token from Secrets Manager
     databricks_token = get_databricks_token(secret_arn)
 
-    logger.debug(f"Using Databricks host: {databricks_host}, Job ID: {databricks_job_id}, Secret ARN: {secret_arn}, Token: {'***' if databricks_token else 'None'}")
+    logger.debug(f"Using Databricks host: {databricks_host}, Job ID: {databricks_job_id}, Secret ARN: {secret_arn}")
     
     # Databricks API endpoint
     api_url = f"{databricks_host}/api/2.1/jobs/run-now"
