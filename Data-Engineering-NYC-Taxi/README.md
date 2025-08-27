@@ -1,6 +1,10 @@
 
 ## Project Overview
-A continuous machine learning pipeline that processes NYC taxi data monthly to update fare prediction models. Raw parquet data is automatically ingested from public sources, processed in Databricks, and made available for ML training in AWS. In this part, we focus on data ingestion and preprocessing.
+We all know a fundamental truth about machine learning: garbage in, garbage out. Why people’s attention focuses on fancy algorithms and model architectures, the other challenge is the data pipeline that feeds these models. The model is only as good as the data it trains on, the data needs to be fresh, clean, and the data pipeline needs to be reliable, scalable.
+
+Imagine building a solution to predict NYC tax fares. We start by training a model with historical ride data, but the model will quickly fall behind reality if we don’t continuously feed it with new rides and fares. A robust data pipeline ensures that fresh data is ingested, processed, and delivered to the model on a regular basis, enabling retraining and keeping predictions accurate over time.
+
+In this side project, I built a cloud-native, serverless data pipeline that ingests and processes NYC taxi data on a monthly schedule. The pipeline is designed to automate the entire flow — from data ingestion to preprocessing — so that updated datasets are always ready to be used for fare prediction ML models. While we’re using NYC taxi data as our example, this architecture pattern applies to countless ML scenarios like product recommendation models, fraud detection systems, predictive maintenance, etc.
 
 ## Architecture Components
 1. Data Ingestion Layer (AWS)
@@ -19,6 +23,7 @@ A continuous machine learning pipeline that processes NYC taxi data monthly to u
 - Output: Updated fare prediction models
 
 
+
 ## Data Ingestion
 This pipeline will automatically download the previous month's data on the 1st of each month, with fallback logic and proper monitoring. The partitioned folder structure makes it easy for Databricks to process the data efficiently. Ingestion isn't just about moving data; it's about creating a reliable, scalable, and maintainable system that fuels everything downstream.
 
@@ -29,7 +34,7 @@ This pipeline will automatically download the previous month's data on the 1st o
 - Resilient Download Process. Everything that can go wrong will go wrong. Build retries, fallbacks, and comprehensive logging from day one. The Lambda function handles common edge cases:
   - HTTP 404 errors (data not yet available)
   - Network timeouts
-  - Partial file downloads
+  - Partial file downloads (?)
   - Everything that can go wrong will go wrong. Build retries, fallbacks, and comprehensive logging from day one.
 - Organized S3 Storage. Design your ingestion format with consumers in mind. Proper partitioning and metadata save countless hours later. Files are stored with clear naming conventions and partitioning: s3_key = f"nyctaxi/raw/year={year}/month={month}/{file_name}"
 
@@ -207,7 +212,66 @@ Lambda function to download data file of the previous month
 
 
 ## Data Preprocessing
-For each monthly raw Parquet file ingested:
+
+- When a new raw parquet NYC taxi data file arrives in S3, we want to automatically trigger a Databricks job to process it. In this case, our ingestion flow downloads from NYC Taxi website.
+- S3 automatically sends out a notification saying: "Hey everyone! A new object was created in bucket databricks-workspace-stack-06ea8-bucket at path nyctaxi/raw/year=2025/month=05/yellow_tripdata_2025-05.parquet" 
+- EventBridge (formerly called CloudWatch Events) Receives the S3 announcement. Checks it against your rules: "Does this match what we're looking for?"
+Your rule says: "Only care about files in nyctaxi/raw/ folder of this specific bucket" Decision: ✅ "Yes, this matches! I need to take action!"
+- EventBridge Rings the Lambda Doorbell. What happens: EventBridge triggers the corresponding Lambda function (the "processing trigger lambda"). "Hey Lambda! New taxi data just arrived. Here are the details: bucket name, file path, etc." 
+- Lambda Function Does Detective Work. What happens: Your Lambda function wakes up and: Receives the file details from EventBridge Checks the filename: "Is this a yellow taxi file?" Extracts information: Year: 2025 Month: 05 File path: nyctaxi/raw/year=2025/month=05/yellow_tripdata_2025-05.parquet --> "Perfect! This is the data we need. Let me tell Databricks to start processing it." 
+- Lambda Calls Databricks What happens: Lambda makes a phone call to Databricks using their API: The call says: "Hi Databricks! Please start job #12345 to process this file: Input file: s3://bucket/nyctaxi/raw/year=2025/month=05/yellow_tripdata_2025-05.parquet Year: 2025 Month: 05" Technical details: This is an HTTP POST request to Databricks' /api/2.1/jobs/run-now endpoint
+- Databricks Starts the Job What happens: Databricks receives the request and: Starts a new run of your preprocessing job Passes the parameters (file path, year, month) to your notebook Allocates compute resources (starts cluster if needed) Begins executing your data processing code
+- Your Databricks Notebook Runs What happens: Your notebook code executes
+
+Final Result
+- New data arrives in S3 raw folder
+- System automatically detects it within seconds
+- Databricks job starts without any manual intervention
+- Data gets processed and saved to processed location
+- ML model can now use the fresh data for training
+
+Why This Approach Is Great
+- Automatic: No manual triggering needed
+- Fast: Processing starts within seconds of file arrival
+- Reliable: AWS managed services with high availability
+- Scalable: Can handle multiple files arriving simultaneously
+- Cost-effective: Only pay when processing happens
+- Auditable: Every step is logged and traceable
+
+This is exactly how modern data engineering pipelines work in production environments!
+
+
+
+Trigger Databricks job when new NYC taxi Parquet file lands in S3 raw folder → Process data → Write to processed S3 location 
+
+S3 Event + Lambda + Databricks API - This is the most responsive approach - triggers immediately when data lands. Cost-effective: Only runs when needed
+
+```
+# EventBridge rule for S3 object creation
+resource "aws_cloudwatch_event_rule" "s3_taxi_data_rule" {
+  name        = "nyctaxi-s3-processing-trigger"
+  description = "Triggers processing when new NYC taxi data arrives in S3 raw"
+
+  event_pattern = jsonencode({
+    source      = ["aws.s3"]
+    detail-type = ["Object Created"]
+    detail = {
+      bucket = {
+        name = ["databricks-workspace-stack-06ea8-bucket"]
+      }
+      object = {
+        key = [
+          {
+            prefix = "nyctaxi/raw/"
+          }
+        ]
+      }
+    }
+  })
+}
+```
+
+EventBridge is a serverless event bus service that simplifies building event-driven applications. It acts as a router, receiving events from various sources and delivering them to different targets based on rules you define. It's an evolution of a feature that was originally part of CloudWatch Events.
 
 1. Read: Read the specific month's raw Parquet data from S3.
 
@@ -231,8 +295,9 @@ For each monthly raw Parquet file ingested:
 
 6. Register & Govern: Create/overwrite the partition in a Delta table registered as a managed table in Unity Catalog. The partition key will be year_month for efficient time-based queries.
 
-7. Monitoring and Alerting: We implemented CloudWatch metrics and alarms to track processing times. 
+7. Monitoring and Alerting: We implemented CloudWatch metrics and alarms to track processing times. (just log, no metrics)
 
+Notebook:  link your Databricks workspace to your GitHub repo, allowing you to version control and sync notebooks directly with GitHub
 
 **Trigger Mechanism**: Instead of a manual trigger, we will use an external trigger (like a new file arriving in S3) for true automation. Test by uploading a test file to S3
 
@@ -243,14 +308,67 @@ For each monthly raw Parquet file ingested:
 
 Raw data: a full refresh month's data is often simpler.
 
+Parquet files store data in columnar storage format, which makes them really efficient in reducing file size and perfect for analytics. Querying the data from a Parquet file will be extremely faster than reading it from a structure like CSV. So, it is a file format that stores data much more efficiently and reads data from it much faster. What can be better than that?
+
+Delta Lake is the structure in which the table’s data is stored. It includes folders and files underneath. One of those file types is Parquet. That is where the actual data is stored. So, Parquet is part of the Delta Lake structure.
+
 Data Quality Enforcement: For this code example, we'll use PySpark assertions
 
+A Databricks Job is a scheduled/triggered execution of a Notebook on a Cluster. The notebook doesn't need to run constantly - it only runs when the job is triggered.
+
+Workflow:
+- Notebook = Your processing code (static, stored in workspace)
+- Job = Configuration that runs the notebook on demand
+- Cluster = Compute resources (created/destroyed automatically)
+
+**Step 1: Create the Databricks Job**
+- Create a new notebook with processing code
+- Create the Job in Jobs and Pipelines and select the notebook you have just created (as in the below image)
+- Get the job ID 884462806815102
+
+
+EventBridge invokes the data processing lambda
+
+Databricks token:
+- Not exposed in Terraform state or code (creates secret with placeholder)
+- Get Databricks token from Databricks settings
+- Update Databricks token in `Secrets Manager` with actual one using AWS CLI. Databricks token = "dapi13745758276b00bc66380da479211421" 
+- Lambda retrieves real token at runtime
+
+```
+aws secretsmanager update-secret \
+  --secret-id "nyctaxi/databricks-token" \
+  --secret-string '{"token":"dapi13745758276b00bc66380da479211421"}'
+```
+
+**What This Terraform Setup Provides:**
+- Lambda Function (processing_trigger.py) - Triggers Databricks jobs
+- EventBridge Rule - Listens for S3 object creation events
+- S3 EventBridge Integration - Enables S3 to send events to EventBridge
+- IAM Roles & Policies - Secure permissions for all components
+- Secrets Manager - Secure Databricks token storage
+- CloudWatch Monitoring - Logs, metrics, alarms
+- Error Handling - Automatic retries and failure notifications (?)
+- S3 bucket already created by Databricks
+
+
+**Deployment Steps**
+- Run `deploy.sh` to install Lambda's dependencies and Deploy with Terraform
+- Update Databricks token in `Secrets Manager` with actual one using AWS CLI
+- Test the pipeline by uploading a test file to trigger the pipeline `aws s3 cp yellow_tripdata_2025-05.parquet s3://databricks-workspace-stack-06ea8-bucket/nyctaxi/raw/year=2025/month=05/yellow_tripdata_2025-05.parquet`
+- Check Logs: Monitor CloudWatch logs for processing trigger Lambda function
+- Check the CloudWatch metrics
+
+Lambda function can trigger Databricks' job. When job failed, click the latest job run to see the error, fix the notebook. Choose "Run now" in Job screen, don't need to copy new file to S3 to trigger..
+
+Do not setup "Retry" for the Job at the beginning as your processing notebook will fail all the time. Consider for Production.
+
+Why we need to create catalog_table_name = "nyc_taxi_analytics.fare_prediction.processed_yellow_taxi"?
+
+====
 
 ## High-Level Design
 
-
-
-====
 The design is centered on an Extract, Transform, Load (ETL) pipeline orchestrated within the Databricks environment. Each stage is designed to be idempotent and modular, allowing for easy debugging and future enhancements.
 
 1. Data Ingestion (E - Extract)
