@@ -338,7 +338,7 @@ Databricks token:
 ```
 aws secretsmanager update-secret \
   --secret-id "nyctaxi/databricks-token" \
-  --secret-string '{"token":"dapi9999"}'
+  --secret-string '{"token":"dapi99999"}'
 ```
 
 **What This Terraform Setup Provides:**
