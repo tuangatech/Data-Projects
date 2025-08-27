@@ -22,7 +22,7 @@ In this side project, I built a cloud-native, serverless data pipeline that inge
 - Input: Processed Delta Lake tables from S3
 - Output: Updated fare prediction models
 
-
+<img width="765" height="485" alt="Image" src="https://github.com/user-attachments/assets/0d2be346-2c94-4af7-b534-b70255db6afe" />
 
 ## Data Ingestion
 This pipeline will automatically download the previous month's data on the 1st of each month, with fallback logic and proper monitoring. The partitioned folder structure makes it easy for Databricks to process the data efficiently. Ingestion isn't just about moving data; it's about creating a reliable, scalable, and maintainable system that fuels everything downstream.
